@@ -9,6 +9,7 @@
 #import "ViewController.h"
 #import <AVFoundation/AVFoundation.h>
 #import "SVProgressHUD.h"
+#import <AVKit/AVKit.h>
 
 NS_ENUM(NSInteger,ExtractVideoType)
 {
@@ -27,6 +28,7 @@ NS_ENUM(NSInteger,ExtractVideoType)
 @property(nonatomic,strong)AVAssetReaderOutput *mAssetReaderOutput;
 @property(nonatomic,strong)AVAssetWriter *mAssetWrite;
 @property(nonatomic,strong)AVAssetWriterInput *mAssetWriteInput;
+@property(nonatomic,strong)AVPlayerViewController *mPlayerView;
 
 @end
 
@@ -48,13 +50,17 @@ NS_ENUM(NSInteger,ExtractVideoType)
     self.mAVURLAsset = [AVURLAsset assetWithURL:url];
     self.mPlayerItem = [AVPlayerItem playerItemWithAsset:self.mAVURLAsset];
     self.mAVPlayer = [AVPlayer playerWithPlayerItem:self.mPlayerItem];
-    [self.mAVPlayer play];
     
-    self.mPlayerLayer = [AVPlayerLayer playerLayerWithPlayer:self.mAVPlayer];
-    self.mPlayerLayer.videoGravity = AVLayerVideoGravityResizeAspect;
+    self.mPlayerView = [[AVPlayerViewController alloc]init];
+    self.mPlayerView.allowsPictureInPicturePlayback = NO;
+    self.mPlayerView.player = self.mAVPlayer;
+    self.mPlayerView.videoGravity = AVLayerVideoGravityResizeAspect;
+    self.mPlayerView.showsPlaybackControls = YES;
     CGRect rect = CGRectMake(0.0f, 100, CGRectGetWidth(self.view.frame), 200);
-    self.mPlayerLayer.frame = rect;
-    [self.view.layer addSublayer:self.mPlayerLayer];
+    [self.mAVPlayer play];
+    self.mPlayerView.view.frame = rect;
+    [self addChildViewController:self.mPlayerView];
+    [self.view addSubview:self.mPlayerView.view];
     
     rect.origin.y = CGRectGetMaxY(rect) + 50.0f;
     rect.size.height = 60;

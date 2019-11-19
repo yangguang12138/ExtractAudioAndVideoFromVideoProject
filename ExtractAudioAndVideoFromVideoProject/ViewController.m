@@ -31,9 +31,7 @@ NS_ENUM(NSInteger,ExtractVideoType)
     self.view.backgroundColor = [UIColor whiteColor];
     
     [self initPlayer];
-    通过AVAssetReader和AVAssetWriter提取视频中的音频和视频文件
-    AVAssetReader *assetReader;
-    AVAssetWriter *assetWriter;
+    
 }
 
 - (void)initPlayer
@@ -43,11 +41,11 @@ NS_ENUM(NSInteger,ExtractVideoType)
     self.mAVURLAsset = [AVURLAsset assetWithURL:url];
     self.mPlayerItem = [AVPlayerItem playerItemWithAsset:self.mAVURLAsset];
     self.mAVPlayer = [AVPlayer playerWithPlayerItem:self.mPlayerItem];
+    [self.mAVPlayer play];
     
     self.mPlayerLayer = [AVPlayerLayer playerLayerWithPlayer:self.mAVPlayer];
     self.mPlayerLayer.frame = CGRectMake(0.0f, 100, CGRectGetWidth(self.view.frame), 200);
     [self.view.layer addSublayer:self.mPlayerLayer];
-    self.mAVPlayer
     
 }
 

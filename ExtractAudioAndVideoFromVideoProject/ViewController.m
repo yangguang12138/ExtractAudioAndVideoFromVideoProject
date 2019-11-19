@@ -8,6 +8,7 @@
 
 #import "ViewController.h"
 #import <AVFoundation/AVFoundation.h>
+#import "SVProgressHUD.h"
 
 NS_ENUM(NSInteger,ExtractVideoType)
 {
@@ -21,6 +22,11 @@ NS_ENUM(NSInteger,ExtractVideoType)
 @property(nonatomic,strong)AVPlayerItem *mPlayerItem;
 @property(nonatomic,strong)AVPlayerLayer *mPlayerLayer;
 @property(nonatomic,strong)AVURLAsset *mAVURLAsset;
+@property(nonatomic,strong)dispatch_queue_t mQueue;
+@property(nonatomic,strong)AVAssetReader *mAssetReader;
+@property(nonatomic,strong)AVAssetReaderOutput *mAssetReaderOutput;
+@property(nonatomic,strong)AVAssetWriter *mAssetWrite;
+@property(nonatomic,strong)AVAssetWriterInput *mAssetWriteInput;
 
 @end
 
@@ -30,6 +36,7 @@ NS_ENUM(NSInteger,ExtractVideoType)
     [super viewDidLoad];
     self.view.backgroundColor = [UIColor whiteColor];
     
+    self.mQueue = dispatch_queue_create("com.feiniao.queue", DISPATCH_QUEUE_CONCURRENT);
     [self initPlayer];
     
 }
@@ -44,8 +51,29 @@ NS_ENUM(NSInteger,ExtractVideoType)
     [self.mAVPlayer play];
     
     self.mPlayerLayer = [AVPlayerLayer playerLayerWithPlayer:self.mAVPlayer];
-    self.mPlayerLayer.frame = CGRectMake(0.0f, 100, CGRectGetWidth(self.view.frame), 200);
+    CGRect rect = CGRectMake(0.0f, 100, CGRectGetWidth(self.view.frame), 200);
+    self.mPlayerLayer.frame = rect;
     [self.view.layer addSublayer:self.mPlayerLayer];
+    
+    rect.origin.y = CGRectGetMaxY(rect) + 50.0f;
+    rect.size.height = 60;
+    rect.size.width = CGRectGetWidth(self.view.frame);
+    UIButton *extractAudioBtn = [UIButton buttonWithType:UIButtonTypeCustom];
+    extractAudioBtn.frame = rect;
+    extractAudioBtn.backgroundColor = [UIColor redColor];
+    [extractAudioBtn setTitle:@"提取音频" forState:UIControlStateNormal];
+    [extractAudioBtn addTarget:self action:@selector(handleClick:) forControlEvents:UIControlEventTouchUpInside];
+    extractAudioBtn.tag = ExtractVideoType_Audio;
+    [self.view addSubview:extractAudioBtn];
+    
+    rect.origin.y = CGRectGetMaxY(rect)+20.0f;
+    UIButton *extractVideoBtn = [UIButton buttonWithType:UIButtonTypeCustom];
+    extractVideoBtn.frame = rect;
+    extractVideoBtn.backgroundColor = [UIColor redColor];
+    [extractVideoBtn setTitle:@"提取视频" forState:UIControlStateNormal];
+    [extractVideoBtn addTarget:self action:@selector(handleClick:) forControlEvents:UIControlEventTouchUpInside];
+    extractVideoBtn.tag = ExtractVideoType_Video;
+    [self.view addSubview:extractVideoBtn];
     
 }
 
@@ -55,11 +83,107 @@ NS_ENUM(NSInteger,ExtractVideoType)
     if (tag == ExtractVideoType_Audio)
     {
         //提取音频
+        
+        [self extractAudioFile];
     }else if (tag == ExtractVideoType_Video)
     {
         //提取视频
+        [self extractVideoFile];
     }
 }
+
+- (void)extractAudioFile
+{
+    NSLog(@"extractAudioFile");
+    [SVProgressHUD show];
+    NSError *error;
+    self.mAssetReader = [AVAssetReader assetReaderWithAsset:self.mAVURLAsset error:&error];
+    AVAssetTrack *track = [[self.mAVURLAsset tracksWithMediaType:AVMediaTypeAudio]firstObject];
+    AudioChannelLayout acl;
+    bzero(&acl, sizeof(acl));
+    acl.mChannelLayoutTag = kAudioChannelLayoutTag_Stereo;
+    NSData *data = [NSData dataWithBytes:&acl length:sizeof(acl)];
+    NSDictionary *readerDict = @{AVFormatIDKey:@(kAudioFormatLinearPCM),
+                                 AVSampleRateKey:@(44100),
+                                 AVNumberOfChannelsKey:@(2),
+                                 AVLinearPCMBitDepthKey:@(16),
+                                 AVLinearPCMIsBigEndianKey:@(false),
+                                 AVLinearPCMIsFloatKey:@(false),
+                                 AVLinearPCMIsNonInterleaved:@(false),
+                                 AVChannelLayoutKey:data
+                                 };
+    
+    self.mAssetReaderOutput = [AVAssetReaderTrackOutput assetReaderTrackOutputWithTrack:track outputSettings:readerDict];
+    if ([self.mAssetReader canAddOutput:self.mAssetReaderOutput])
+    {
+        [self.mAssetReader addOutput:self.mAssetReaderOutput];
+    }
+    
+    //提高性能
+    self.mAssetReaderOutput.alwaysCopiesSampleData = NO;
+    
+    NSString *outputPathStr = [NSHomeDirectory() stringByAppendingString:@"/Documents/output.m4a"];
+    NSLog(@"outputPath:%@",outputPathStr);
+    unlink([outputPathStr UTF8String]);
+    NSURL *outPutUrl = [NSURL fileURLWithPath:outputPathStr];
+    self.mAssetWrite = [AVAssetWriter assetWriterWithURL:outPutUrl fileType:AVFileTypeAppleM4A error:&error];
+    
+    NSDictionary *writeDict = @{AVFormatIDKey:@(kAudioFormatMPEG4AAC),
+                                AVSampleRateKey:@(44100),
+                                AVNumberOfChannelsKey:@(2),
+                                AVEncoderBitRateKey:@(128000),
+                                AVChannelLayoutKey:data
+                                };
+    self.mAssetWriteInput = [AVAssetWriterInput assetWriterInputWithMediaType:AVMediaTypeAudio outputSettings:writeDict];
+    if ([self.mAssetWrite canAddInput:self.mAssetWriteInput])
+    {
+        [self.mAssetWrite addInput:self.mAssetWriteInput];
+    }
+    [self exportFile];
+}
+
+- (void)extractVideoFile
+{
+    
+}
+
+- (void)exportFile
+{
+    [self.mAssetReader startReading];
+    [self.mAssetWrite startWriting];
+    [self.mAssetWrite startSessionAtSourceTime:kCMTimeZero];
+    
+    [self.mAssetWriteInput requestMediaDataWhenReadyOnQueue:self.mQueue usingBlock:^{
+        while (self.mAssetWriteInput.isReadyForMoreMediaData)
+        {
+            CMSampleBufferRef sampleBuffer = [self.mAssetReaderOutput copyNextSampleBuffer];
+            if (sampleBuffer)
+            {
+                [self.mAssetWriteInput appendSampleBuffer:sampleBuffer];
+                CMSampleBufferIsValid(sampleBuffer);
+                CFRelease(sampleBuffer);
+            }else
+            {
+                [SVProgressHUD dismiss];
+                [self.mAssetWriteInput markAsFinished];
+                [self.mAssetReader cancelReading];
+                [self.mAssetWrite finishWritingWithCompletionHandler:^{
+                    AVAssetWriterStatus status = self.mAssetWrite.status;
+                    if (status == AVAssetWriterStatusCompleted)
+                    {
+                        NSLog(@"提取成功");
+                    }else
+                    {
+                        NSLog(@"提取失败:%@",self.mAssetWrite.error);
+                    }
+                }];
+                
+                break;
+            }
+        }
+    }];
+}
+
 
 
 @end

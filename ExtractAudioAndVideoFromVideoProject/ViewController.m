@@ -144,11 +144,39 @@ NS_ENUM(NSInteger,ExtractVideoType)
 
 - (void)extractVideoFile
 {
+    NSError *error;
+    self.mAssetReader = [AVAssetReader assetReaderWithAsset:self.mAVURLAsset error:&error];
+    AVAssetTrack *assetTrack = [[self.mAVURLAsset tracksWithMediaType:AVMediaTypeVideo] firstObject];
+    NSDictionary *readerDict = @{(id)kCVPixelBufferPixelFormatTypeKey:@(kCVPixelFormatType_32ARGB)};
+    self.mAssetReaderOutput = [AVAssetReaderTrackOutput assetReaderTrackOutputWithTrack:assetTrack outputSettings:readerDict];
+    if ([self.mAssetReader canAddOutput:self.mAssetReaderOutput])
+    {
+        [self.mAssetReader addOutput:self.mAssetReaderOutput];
+    }
+    
+    NSString *pathStr = [NSHomeDirectory() stringByAppendingString:@"/Documents/output.mp4"];
+    NSLog(@"outputFile:%@",pathStr);
+    unlink([pathStr UTF8String]);
+    NSURL *url = [NSURL fileURLWithPath:pathStr];
+    self.mAssetWrite = [AVAssetWriter assetWriterWithURL:url fileType:AVFileTypeMPEG4 error:&error];
+    CGSize naturalSize = assetTrack.naturalSize;
+    NSDictionary *writeDict = @{AVVideoCodecKey:AVVideoCodecTypeH264,
+                                AVVideoWidthKey:@(naturalSize.width),
+                                AVVideoHeightKey:@(naturalSize.height)
+                                };
+    self.mAssetWriteInput = [AVAssetWriterInput assetWriterInputWithMediaType:AVMediaTypeVideo outputSettings:writeDict];
+    if ([self.mAssetWrite canAddInput:self.mAssetWriteInput])
+    {
+        [self.mAssetWrite addInput:self.mAssetWriteInput];
+    }
+    [self exportFile];
     
 }
 
 - (void)exportFile
 {
+    [SVProgressHUD show];
+    
     [self.mAssetReader startReading];
     [self.mAssetWrite startWriting];
     [self.mAssetWrite startSessionAtSourceTime:kCMTimeZero];
@@ -164,7 +192,9 @@ NS_ENUM(NSInteger,ExtractVideoType)
                 CFRelease(sampleBuffer);
             }else
             {
-                [SVProgressHUD dismiss];
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    [SVProgressHUD dismiss];
+                });
                 [self.mAssetWriteInput markAsFinished];
                 [self.mAssetReader cancelReading];
                 [self.mAssetWrite finishWritingWithCompletionHandler:^{

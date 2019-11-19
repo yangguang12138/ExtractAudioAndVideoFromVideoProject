@@ -51,6 +51,7 @@ NS_ENUM(NSInteger,ExtractVideoType)
     [self.mAVPlayer play];
     
     self.mPlayerLayer = [AVPlayerLayer playerLayerWithPlayer:self.mAVPlayer];
+    self.mPlayerLayer.videoGravity = AVLayerVideoGravityResizeAspect;
     CGRect rect = CGRectMake(0.0f, 100, CGRectGetWidth(self.view.frame), 200);
     self.mPlayerLayer.frame = rect;
     [self.view.layer addSublayer:self.mPlayerLayer];
